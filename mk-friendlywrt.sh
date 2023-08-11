@@ -68,13 +68,13 @@ make download -j$(nproc)
 find dl -size -1024c -exec ls -l {} \;
 find dl -size -1024c -exec rm -f {} \;
 
-make -j$(nproc)
-RET=$?
-if [ $RET -eq 0 ]; then
-	exit 0
-fi
+#make -j$(nproc) V=sc
+#RET=$?
+#if [ $RET -eq 0 ]; then
+#	exit 0
+#fi
 
-make -j1 V=s
+make -j1 V=sc
 RET=$?
 if [ $RET -eq 0 ]; then
 	exit 0

@@ -260,17 +260,18 @@ function prepare_image_for_friendlyelec_eflasher(){
 	# Notes:
 	# The following operation must be applied after FRIENDLYWRT_FILES has been applied
 	# 
-	PKG_DIR=${FRIENDLYWRT_PACKAGE_DIR}
-	if [ -z ${PKG_DIR} ]; then
-		log_error "pkg_dir is empty, why?"
-		exit 1
-	else
-		[ -d ${ROOTFS_DIR}/opt ] || mkdir ${ROOTFS_DIR}/opt
-		cp -af ${TOP_DIR}/${FRIENDLYWRT_SRC}/${PKG_DIR} ${ROOTFS_DIR}/opt/
-		sed -i -e '/file\:\/\/opt\/$(basename ${PKG_DIR})/d' ${ROOTFS_DIR}/etc/opkg/distfeeds.conf
-		echo "src/gz friendlywrt_packages file://opt/$(basename ${PKG_DIR})" >> ${ROOTFS_DIR}/etc/opkg/distfeeds.conf
-		sed -i '/check_signature/d' ${ROOTFS_DIR}/etc/opkg.conf
-	fi
+#WORKAROUND - THIS DOES NOT WORK
+#	PKG_DIR=${FRIENDLYWRT_PACKAGE_DIR}
+#	if [ -z ${PKG_DIR} ]; then
+#		log_error "pkg_dir is empty, why?"
+#		exit 1
+#	else
+#		[ -d ${ROOTFS_DIR}/opt ] || mkdir ${ROOTFS_DIR}/opt
+#		cp -af ${TOP_DIR}/${FRIENDLYWRT_SRC}/${PKG_DIR} ${ROOTFS_DIR}/opt/
+#		sed -i -e '/file\:\/\/opt\/$(basename ${PKG_DIR})/d' ${ROOTFS_DIR}/etc/opkg/distfeeds.conf
+#		echo "src/gz friendlywrt_packages file://opt/$(basename ${PKG_DIR})" >> ${ROOTFS_DIR}/etc/opkg/distfeeds.conf
+#		sed -i '/check_signature/d' ${ROOTFS_DIR}/etc/opkg.conf
+#	fi
 
 	local BOOT_DIR=$(mktemp -d ${SDFUSE_DIR}/out/boot.XXXXXXXXX)
 
