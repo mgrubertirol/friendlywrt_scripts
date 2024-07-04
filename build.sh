@@ -444,12 +444,12 @@ EOL
 		echo "-----------------------------------------"
 	fi
 
-	echo "-ZHW SPECIAL - START -------------------------"
+	echo "-ZHW SPECIAL 1 - START -------------------------"
 	cp -v ${UBOOT_DIR}/u-boot-sunxi-with-spl.bin ${BOOT_DIR}
 
-	#sed -i 's/mmcblk0p2/mmcblk0p5/g' ${BOOT_DIR}/boot.cmd
-	#mkimage -C none -A arm -T script -d ${BOOT_DIR}/boot.cmd ${BOOT_DIR}/boot.scr
-	echo "-ZHW SPECIAL - END  --------------------------"
+	sed -i 's/mmcblk0p2/mmcblk0p5/g' ${BOOT_DIR}/boot.cmd
+	mkimage -C none -A arm -T script -d ${BOOT_DIR}/boot.cmd ${BOOT_DIR}/boot.scr
+	echo "-ZHW SPECIAL 1 - END  --------------------------"
 	echo
 
 	echo "-ZHW IMAGES - START ----------------------------"
@@ -464,6 +464,13 @@ EOL
 	ls -la ../boot-opengw.tgz
 	cd --
 	echo "-ZHW IMAGES - START -----------------------------"
+
+	echo "-ZHW SPECIAL 2 - START -------------------------"
+	sed -i 's/mmcblk0p5/mmcblk0p2/g' ${BOOT_DIR}/boot.cmd
+	mkimage -C none -A arm -T script -d ${BOOT_DIR}/boot.cmd ${BOOT_DIR}/boot.scr
+	echo "-ZHW SPECIAL 2 - END  --------------------------"
+	echo
+
 
 	return 0
 }
