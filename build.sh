@@ -192,7 +192,7 @@ function build_all() {
 	build_uboot
 	build_kernel
 	build_friendlywrt
-	build_sdimg
+	#build_sdimg
 }
 
 function clean_old_images(){
@@ -342,6 +342,134 @@ EOL
 	return 0
 }
 
+function prepare_image_for_friendlyelec_for_zhw(){
+	local OS_DIR=$1
+	local ROOTFS=$2
+	if [ ! -d ${SDFUSE_DIR}/${OS_DIR} ]; then
+		mkdir ${SDFUSE_DIR}/${OS_DIR}
+	fi
+	rm -rf ${SDFUSE_DIR}/${OS_DIR}/*
+
+	# clean
+	rm -rf ${SDFUSE_DIR}/out/boot.*
+
+	local ROOTFS_DIR=${EXTERNAL_ROOTFS_DIR}
+	if [ -z $ROOTFS_DIR ]; then
+		rm -rf ${SDFUSE_DIR}/out/rootfs.*
+		ROOTFS_DIR=$(mktemp -d ${SDFUSE_DIR}/out/rootfs.XXXXXXXXX)
+	fi
+	log_info "Copying ${TOP_DIR}/${FRIENDLYWRT_SRC}/${FRIENDLYWRT_ROOTFS} to ${ROOTFS_DIR}/"
+	cp -af ${TOP_DIR}/${FRIENDLYWRT_SRC}/${FRIENDLYWRT_ROOTFS}/* ${ROOTFS_DIR}/
+
+	echo "$(date +%Y%m%d)" > ${ROOTFS_DIR}/etc/rom-version
+	for (( i=0; i<${#FRIENDLYWRT_FILES[@]}; i++ ));
+	do
+		# apply patch to rootfs
+		if [ ! -z ${FRIENDLYWRT_FILES[$i]} ]; then
+			log_info "Applying ${FRIENDLYWRT_FILES[$i]} to ${ROOTFS_DIR}"
+			if [ -f ${TOP_DIR}/${FRIENDLYWRT_FILES[$i]}/install.sh ]; then
+				(cd ${TOP_DIR}/${FRIENDLYWRT_FILES[$i]} && {
+					TOP_DIR=${TOP_DIR} ./install.sh ${ROOTFS_DIR}
+				})
+			else
+				rsync -a --no-o --no-g --exclude='.git' ${TOP_DIR}/${FRIENDLYWRT_FILES[$i]}/* ${ROOTFS_DIR}/
+			fi
+		fi
+	done
+
+	local BOOT_DIR=$(mktemp -d ${SDFUSE_DIR}/out/boot.XXXXXXXXX)
+
+	# prepare uboot bin, boot.img and rootfs.img
+	local UBOOT_DIR=${TOP_DIR}/u-boot
+	local KERNEL_DIR=${TOP_DIR}/kernel
+	(cd ${SDFUSE_DIR} && {
+		./tools/update_uboot_bin.sh ${UBOOT_DIR} ./${OS_DIR}
+		if [ $? -ne 0 ]; then
+			log_error "error: fail to copy uboot bin file."
+			return 1
+		fi
+		./tools/setup_boot_and_rootfs.sh ${UBOOT_DIR} ${KERNEL_DIR} ${BOOT_DIR} ${ROOTFS_DIR} ./prebuilt ${OS_DIR}
+		if [ $? -ne 0 ]; then
+			log_error "error: fail to copy kernel to rootfs.img."
+			return 1
+		fi
+
+		./tools/prepare_friendlywrt_kernelmodules.sh ${ROOTFS_DIR}
+		if [ $? -ne 0 ]; then
+			log_error "error: fail to fix kernel module for friendlywrt to rootfs.img."
+			return 1
+		fi
+
+		log_info "prepare boot.img ..."
+		./build-boot-img.sh ${BOOT_DIR} ./${OS_DIR}/boot.img
+		if [ $? -ne 0 ]; then
+			log_error "error: fail to gen boot.img."
+			return 1
+		fi 
+
+		log_info "prepare rootfs.img ..."
+		./build-rootfs-img.sh ${ROOTFS_DIR} ${OS_DIR} 0
+		if [ $? -ne 0 ]; then
+			log_error "error: fail to gen rootfs.img."
+			return 1
+		fi
+
+		cat > ./${OS_DIR}/info.conf << EOL
+title=${OS_DIR}
+require-board=${TARGET_PLAT}
+version=$(date +%Y-%m-%d)
+EOL
+		./tools/update_prebuilt.sh ./${OS_DIR} ./prebuilt
+		if [ $? -ne 0 ]; then
+			log_error "error: fail to copy prebuilt images."
+			return 1
+		fi
+		return 0
+	})
+	if [ $? -ne 0 ]; then
+		return 1
+	fi
+
+	# clean
+	if [ ${KEEP_CACHE} -eq 0 ]; then
+		log_info "clean ..."
+		rm -rf ${ROOTFS_DIR}
+		rm -rf ${BOOT_DIR}
+	else
+		echo "-----------------------------------------"
+		echo "rootfs dir:"
+		echo "	${ROOTFS_DIR}"
+		echo "boot dir:"
+		echo "	${BOOT_DIR}"
+		echo "-----------------------------------------"
+	fi
+
+	echo "-ZHW SPECIAL - START -------------------------"
+	cp -v ${UBOOT_DIR}/u-boot-sunxi-with-spl.bin ${BOOT_DIR}
+
+	#sed -i 's/mmcblk0p2/mmcblk0p5/g' ${BOOT_DIR}/boot.cmd
+	#mkimage -C none -A arm -T script -d ${BOOT_DIR}/boot.cmd ${BOOT_DIR}/boot.scr
+	echo "-ZHW SPECIAL - END  --------------------------"
+	echo
+
+	echo "-ZHW IMAGES - START ----------------------------"
+	cd ${ROOTFS_DIR}
+	rm -f ../rootfs-opengw.tgz
+	tar czf ../rootfs-opengw.tgz .
+	ls -la ../rootfs-opengw.tgz
+	cd --
+	cd ${BOOT_DIR}
+	rm -f ../boot-opengw.tgz
+	tar czf ../boot-opengw.tgz .
+	ls -la ../boot-opengw.tgz
+	cd --
+	echo "-ZHW IMAGES - START -----------------------------"
+
+	return 0
+}
+
+
+
 function clean_device_files()
 {
 	# create tmp dir
@@ -391,6 +519,49 @@ function build_sdimg(){
 		echo "-----------------------------------------"
 	})
 }
+
+function build_zhwimg(){
+	source ${SDFUSE_DIR}/tools/util.sh
+	local HAS_BUILT_UBOOT=`has_built_uboot ${TOP_DIR}/u-boot ${SDFUSE_DIR}/out`
+	local HAS_BUILD_KERN=`has_built_kernel ${TOP_DIR}/kernel ${SDFUSE_DIR}/out`
+	local HAS_BUILD_KERN_MODULES=`has_built_kernel_modules ${TOP_DIR}/kernel ${SDFUSE_DIR}/out`
+
+	log_info "HAS_BUILT_UBOOT = ${HAS_BUILT_UBOOT}"
+	log_info "HAS_BUILD_KERN = ${HAS_BUILD_KERN}"
+	log_info "HAS_BUILD_KERN_MODULES = ${HAS_BUILD_KERN_MODULES}"
+
+	if [ ${HAS_BUILT_UBOOT} -ne 1 ]; then
+		log_error "error: please build u-boot first."
+		exit 1
+	fi
+	
+	if [ ${HAS_BUILD_KERN} -ne 1 ]; then
+		log_error "error: please build kernel first."
+		exit 1
+	fi
+
+	if [ ${HAS_BUILD_KERN_MODULES} -ne 1 ]; then
+		log_error "error: please build kernel first (miss kernel modules)."
+		exit 1
+	fi
+
+	local ROOTFS=${TOP_DIR}/${FRIENDLYWRT_SRC}/${FRIENDLYWRT_ROOTFS}
+
+	prepare_image_for_friendlyelec_for_zhw ${TARGET_IMAGE_DIRNAME} ${ROOTFS}
+
+#	prepare_image_for_friendlyelec_eflasher ${TARGET_IMAGE_DIRNAME} ${ROOTFS} && (cd ${SDFUSE_DIR} && {
+#	./mk-zhw-image.sh ${TARGET_IMAGE_DIRNAME} ${TARGET_SD_RAW_FILENAME}
+#		(cd out && {
+#		rm -f ${TARGET_SD_RAW_FILENAME}.gz
+#		gzip --keep ${TARGET_SD_RAW_FILENAME}
+#		})
+#		echo "-----------------------------------------"
+#		echo "Copy images to install sd card!"
+#		echo "-----------------------------------------"
+#	})
+}
+
+
 
 function install_toolchain() {
 	if [ ! -d /opt/FriendlyARM/toolchain/4.9.3 ]; then
@@ -470,6 +641,9 @@ else
 		exit 0
 	elif [ $BUILD_TARGET == emmc-img ]; then
 		build_emmcimg
+		exit 0
+	elif [ $BUILD_TARGET == zhw-img ]; then
+		build_zhwimg
 		exit 0
 	elif [ $BUILD_TARGET == all ];then
 		build_all
